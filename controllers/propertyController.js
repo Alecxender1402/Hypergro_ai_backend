@@ -1,6 +1,5 @@
 const { body, validationResult } = require('express-validator');
 const Property = require('../models/Property');
-const redis = require('../config/redis');
 
 // Validation rules for create and update
 exports.propertyValidationRules = [
