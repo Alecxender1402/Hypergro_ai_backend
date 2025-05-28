@@ -7,8 +7,7 @@ const { propertyFilterValidation } = require('../middleware/validation');
 router.get('/', propertyFilterValidation, propertyController.advancedFilter);
 
 router.post('/create', auth, propertyController.createProperty);
-router.get('/', propertyController.getAllProperties);
-router.get('/', propertyController.advancedFilter);
+router.get('/all', propertyController.getAllProperties);
 router.get('/:id', propertyController.getPropertyById);
 router.put('/:id', auth, propertyController.updateProperty);
 router.delete('/:id', auth, propertyController.deleteProperty);
