@@ -12,6 +12,7 @@ app.use(cors());
 
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/auth', userRoutes);
+app.use('/api/recommendations', require('./routes/recommendationRoutes'));
 app.use('/api/properties', propertyRoutes);
 
 async function startServer() {
