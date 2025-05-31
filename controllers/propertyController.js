@@ -1,7 +1,19 @@
-const { body, validationResult } = require("express-validator");
 const Property = require("../models/Property");
+const { body, validationResult } = require("express-validator");
+// Cache middleware is now a no-op
+const { cache, invalidateCache } = require("../middleware/cache");
+const mongoose = require("mongoose");
 
-// Validation rules for create and update
+// Helper to handle validation errors
+const handleValidationErrors = (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+  return null;
+};
+
+// Property validation rules
 exports.propertyValidationRules = [
   body("title")
     .trim()
@@ -116,25 +128,6 @@ exports.propertyValidationRules = [
     .withMessage("ListingType must be either rent or sale"),
 ];
 
-const invalidateCache = async (patterns) => {
-  try {
-    const keys = await redis.keys(`cache:${patterns}*`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-  } catch (err) {
-    console.error("Cache invalidation error:", err);
-  }
-};
-// Helper to handle validation errors
-const handleValidationErrors = (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-  return null;
-};
-
 // CREATE
 exports.createProperty = [
   ...exports.propertyValidationRules,
@@ -145,6 +138,10 @@ exports.createProperty = [
     try {
       const property = new Property({ ...req.body, createdBy: req.user.id });
       await property.save();
+      
+      // Invalidate cache after creating new property
+      await invalidateCache(['/properties']);
+      
       res.status(201).json(property);
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -152,56 +149,110 @@ exports.createProperty = [
   },
 ];
 
-// READ ALL
-exports.getAllProperties = async (req, res) => {
-  try {
-    const properties = await Property.find();
-    res.json(properties);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// READ ALL - cached
+exports.getAllProperties = [
+  cache(60 * 15), // Cache for 15 minutes
+  async (req, res) => {
+    try {
+      const properties = await Property.find();
+      res.json(properties);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
-};
+];
 
-// READ ONE
-exports.getPropertyById = async (req, res) => {
-  try {
-    const property = await Property.findById(req.params.id);
-    if (!property) return res.status(404).json({ error: "Property not found" });
-    res.json(property);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// READ ONE - cached
+exports.getPropertyById = [
+  cache(60 * 30), // Cache for 30 minutes
+  async (req, res) => {
+    try {
+      const property = await Property.findById(req.params.id);
+      if (!property) return res.status(404).json({ error: "Property not found" });
+      res.json(property);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
-};
+];
 
 // UPDATE
 exports.updateProperty = [
   ...exports.propertyValidationRules,
   async (req, res) => {
-    const errorResponse = handleValidationErrors(req, res);
-    if (errorResponse) return;
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
     try {
+      // 1. Find property
       const property = await Property.findById(req.params.id);
       if (!property) {
         return res.status(404).json({ error: "Property not found" });
       }
-      // Check ownership
+
+      // 2. Verify ownership
       if (property.createdBy.toString() !== req.user.id) {
-        return res
-          .status(403)
-          .json({ error: "Unauthorized: not the property owner" });
+        return res.status(403).json({ 
+          error: "Unauthorized: You can only update your own properties" 
+        });
       }
 
-      await invalidateCache([`/properties/${req.params.id}`, "/properties"]);
+      // 3. Define allowed updatable fields (adjust based on your schema)
+      const allowedUpdates = [
+        'title',
+        'description',
+        'price',
+        'bedrooms',
+        'bathrooms',
+        'areaSqFt',
+        'amenities',
+        'furnished',
+        'availableFrom',
+        'tags',
+        'isVerified',
+        'listingType'
+      ];
 
-      Object.assign(property, req.body);
-      await property.save();
-      res.json(property);
+      // 4. Filter request body to only allowed fields
+      const updates = Object.keys(req.body)
+        .filter(key => allowedUpdates.includes(key))
+        .reduce((obj, key) => {
+          obj[key] = req.body[key];
+          return obj;
+        }, {});
+
+      // 5. Perform update with validation
+      const updatedProperty = await Property.findByIdAndUpdate(
+        req.params.id,
+        updates,
+        { new: true, runValidators: true }
+      );
+
+      // 6. Invalidate cache
+      await invalidateCache([
+        `/properties/${req.params.id}`,
+        '/properties'
+      ]);
+
+      res.json(updatedProperty);
     } catch (err) {
-      res.status(400).json({ error: err.message });
+      // Handle different error types
+      if (err.name === 'CastError') {
+        return res.status(400).json({ error: "Invalid property ID" });
+      }
+      if (err.name === 'ValidationError') {
+        return res.status(400).json({ error: err.message });
+      }
+      res.status(500).json({ 
+        error: "Server error while updating property" 
+      });
     }
-  },
+  }
 ];
+
 
 // DELETE
 exports.deleteProperty = async (req, res) => {
@@ -218,92 +269,127 @@ exports.deleteProperty = async (req, res) => {
       return res.status(403).json({ error: "Unauthorized: not the property owner" });
     }
 
-    await property.deleteOne(); // preferred over remove()
+    await property.deleteOne();
+    
+    // Invalidate cache after deleting property
+    await invalidateCache([`/properties/${req.params.id}`, '/properties']);
+
     res.json({ message: "Property deleted" });
   } catch (err) {
-    console.error("Delete property error:", err); // Add logging
+    console.error("Delete property error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
+// Advanced filtering with caching
+// Helper function to build filter object from query params
+const buildFilterObject = (query) => {
+  const filterObj = {};
+  
+  // Process each query parameter
+  Object.keys(query).forEach((key) => {
+    // Skip pagination parameters
+    if (["page", "limit", "sort", "fields"].includes(key)) {
+      return;
+    }
+    
+    // Handle special operator parameters like price[gte], price[lte], etc.
+    if (key.includes("[")) {
+      const fieldName = key.split("[")[0];
+      const operator = key.split("[")[1].replace("]", "");
+      
+      // Initialize nested structure if it doesn't exist
+      if (!filterObj[fieldName]) {
+        filterObj[fieldName] = {};
+      }
+      
+      // Map operator strings to MongoDB operators
+      const mongoOperator = {
+        gte: "$gte",
+        gt: "$gt",
+        lte: "$lte",
+        lt: "$lt",
+        eq: "$eq",
+        ne: "$ne",
+      }[operator];
+      
+      if (mongoOperator) {
+        filterObj[fieldName][mongoOperator] = query[key];
+      }
+    } 
+    // Handle comma-separated values (for array fields)
+    else if (key === "amenities" && query[key]) {
+      filterObj[key] = { $all: query[key].split(",") };
+    } 
+    // Handle text search
+    else if (key === "search" && query[key]) {
+      filterObj["$or"] = [
+        { title: { $regex: query[key], $options: "i" } },
+        { city: { $regex: query[key], $options: "i" } },
+        { description: { $regex: query[key], $options: "i" } },
+      ];
+    } 
+    // Handle boolean values
+    else if (["isVerified", "isFeatured"].includes(key)) {
+      filterObj[key] = query[key] === "true";
+    } 
+    // Handle regular equality checks
+    else {
+      filterObj[key] = query[key];
+    }
+  });
+  
+  return filterObj;
+};
 
-// controllers/propertyController.js
 exports.advancedFilter = async (req, res) => {
   try {
-    // 1. Filtering
-    const queryObj = { ...req.query };
-    const excludedFields = ["page", "sort", "limit", "fields", "search"];
-    excludedFields.forEach((el) => delete queryObj[el]);
-
-    // 2. Advanced Filtering (gte, lte, etc.)
-    let queryStr = JSON.stringify(queryObj);
-    queryStr = queryStr.replace(/\b(gte|gt|lte|lt)\b/g, (match) => `$${match}`);
-    let filter = JSON.parse(queryStr);
-
-    // 3. Text Search
-    if (req.query.search) {
-      filter.$or = [
-        { title: { $regex: req.query.search, $options: "i" } },
-        { description: { $regex: req.query.search, $options: "i" } },
-        { "address.street": { $regex: req.query.search, $options: "i" } },
-      ];
-    }
-
-    // 4. Array Filters (amenities, tags)
-    ["amenities", "tags"].forEach((field) => {
-      if (req.query[field]) {
-        filter[field] = { $all: req.query[field].split(",") };
-      }
-    });
-
-    // 5. Date Filtering
-    if (req.query.availableFrom) {
-      filter.availableFrom = {
-        $gte: new Date(req.query.availableFrom),
-      };
-    }
-
-    // 6. Pagination
+    // Build filter object from query parameters
+    const filterObj = buildFilterObject(req.query);
+    
+    // Pagination parameters
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 12;
+    const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-
-    // 7. Query
-    let query = Property.find(filter);
-
-    // 8. Sorting
+    
+    // Build query
+    let query = Property.find(filterObj);
+    
+    // Handle sorting
     if (req.query.sort) {
       const sortBy = req.query.sort.split(",").join(" ");
       query = query.sort(sortBy);
     } else {
       query = query.sort("-createdAt");
     }
-
-    // 9. Field Limiting
+    
+    // Handle field selection
     if (req.query.fields) {
       const fields = req.query.fields.split(",").join(" ");
       query = query.select(fields);
-    } else {
-      query = query.select("-__v");
     }
-
-    // 10. Pagination
-    query = query.skip(skip).limit(limit);
-
-    const properties = await query.exec();
-    const total = await Property.countDocuments(filter);
-
+    
+    // Execute query with pagination
+    const properties = await query.skip(skip).limit(limit);
+    
+    // Get total count for pagination info
+    const total = await Property.countDocuments(filterObj);
+    
+    // Calculate total pages
+    const pages = Math.ceil(total / limit);
+    
     res.status(200).json({
       status: "success",
       results: properties.length,
       total,
       page,
-      pages: Math.ceil(total / limit),
+      pages,
       data: properties,
     });
   } catch (err) {
-    res.status(400).json({
-      status: "fail",
+    console.error(err);
+    res.status(500).json({
+      status: "error",
       message: err.message,
     });
   }

@@ -1,5 +1,6 @@
 const Favorite = require('../models/Favorite');
 const Property = require('../models/Property');
+const { invalidateCache } = require('../middleware/cache');
 
 // Create favorite
 exports.createFavorite = async (req, res) => {
@@ -18,6 +19,9 @@ exports.createFavorite = async (req, res) => {
       property: propertyId
     });
 
+    // Invalidate user favorites cache
+    await invalidateCache([`/favorites`]);
+
     res.status(201).json(favorite);
   } catch (err) {
     if (err.code === 11000) {
@@ -27,18 +31,28 @@ exports.createFavorite = async (req, res) => {
   }
 };
 
-// Get user favorites
+// Get user favorites - caching handled by middleware
+// In favoriteController.js (getUserFavorites)
 exports.getUserFavorites = async (req, res) => {
   try {
     const favorites = await Favorite.find({ user: req.user.id })
-      .populate('property', 'title price city state')
-      .sort('-createdAt');
+      .populate({
+        path: 'property',
+        match: { _id: { $exists: true } }, // Only populate if property exists
+        select: 'title price city state'
+      })
+      .sort('-createdAt')
+      .lean(); // Convert to plain JS object
 
-    res.json(favorites);
+    // Filter out favorites with null properties
+    const validFavorites = favorites.filter(f => f.property !== null);
+      
+    res.json(validFavorites);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // Delete favorite
 exports.deleteFavorite = async (req, res) => {
@@ -51,6 +65,9 @@ exports.deleteFavorite = async (req, res) => {
     if (!favorite) {
       return res.status(404).json({ error: 'Favorite not found' });
     }
+
+    // Invalidate user favorites cache
+    await invalidateCache([`/favorites`]);
 
     res.json({ message: 'Favorite removed' });
   } catch (err) {
