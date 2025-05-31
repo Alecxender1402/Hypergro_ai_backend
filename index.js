@@ -23,6 +23,10 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'UP', timestamp: new Date() });
 });
 
+app.get('/', (req, res) => {
+  res.status(200).send("Welcome to the Real Estate API");
+});
+
 // Server instance
 let server;
 
