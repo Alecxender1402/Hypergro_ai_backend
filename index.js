@@ -1,6 +1,6 @@
 const express = require("express");
 const connectDB = require("./config/db");
-const { connectRedis, disconnectRedis } = require("./config/redis"); // Add this line
+const { connectRedis, disconnectRedis } = require("./config/redis"); 
 const cors = require("cors");
 const app = express();
 const userRoutes = require("./routes/userRoutes");
@@ -10,7 +10,15 @@ const insertPropertiesFromCSV = require("./config/insertiondata");
 const diagnosticsRoutes = require('./routes/diagnosticsRoutes');
 
 app.use(express.json());
-app.use(cors());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*'); 
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/auth', userRoutes);
