@@ -6,9 +6,9 @@ const { propertyFilterValidation } = require('../middleware/validation');
 const { cache } = require('../middleware/cache');
 
 // Define cache durations in seconds
-const CACHE_SHORT = 5 * 60;      // 5 minutes
-const CACHE_MEDIUM = 15 * 60;    // 15 minutes
-const CACHE_LONG = 30 * 60;      // 30 minutes
+const CACHE_SHORT = 30;          // 30 seconds for real-time data
+const CACHE_MEDIUM = 5 * 60;     // 5 minutes  
+const CACHE_LONG = 15 * 60;      // 15 minutes
 
 // Routes with caching
 router.get('/', propertyFilterValidation, cache(CACHE_SHORT), propertyController.advancedFilter);

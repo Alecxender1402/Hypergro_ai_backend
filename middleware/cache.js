@@ -23,8 +23,9 @@ exports.cache = (ttl = DEFAULT_TTL) => {
     }
     
     try {
-      // Generate unique cache key based on URL and query parameters
-      const cacheKey = `cache:${req.originalUrl}`;
+      // Generate unique cache key based on URL, query parameters, and user ID
+      const userId = req.user ? req.user.id : 'anonymous';
+      const cacheKey = `cache:user:${userId}:${req.originalUrl}`;
       
       console.log(`Checking cache for key: ${cacheKey}`);
       const cachedResponse = await redisClient.get(cacheKey);
@@ -69,8 +70,9 @@ exports.cache = (ttl = DEFAULT_TTL) => {
 /**
  * Cache invalidation function - removes cached data matching patterns
  * @param {Array} patterns URL patterns to invalidate
+ * @param {string} userId User ID for user-specific cache invalidation
  */
-exports.invalidateCache = async (patterns = []) => {
+exports.invalidateCache = async (patterns = [], userId = null) => {
   const redisClient = getRedisClient();
   
   if (!redisClient) {
@@ -80,7 +82,16 @@ exports.invalidateCache = async (patterns = []) => {
   
   try {
     for (const pattern of patterns) {
-      const searchPattern = `cache:${pattern}*`;
+      let searchPattern;
+      
+      if (userId) {
+        // User-specific cache invalidation
+        searchPattern = `cache:user:${userId}:${pattern}*`;
+      } else {
+        // General cache invalidation
+        searchPattern = `cache:*${pattern}*`;
+      }
+      
       console.log(`Searching for cache keys matching: ${searchPattern}`);
       
       // Find all keys matching the pattern

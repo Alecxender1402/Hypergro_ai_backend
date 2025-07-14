@@ -1,6 +1,5 @@
 const Property = require("../models/Property");
 const { body, validationResult } = require("express-validator");
-// Cache middleware is now a no-op
 const { cache, invalidateCache } = require("../middleware/cache");
 const mongoose = require("mongoose");
 
@@ -314,7 +313,27 @@ const buildFilterObject = (query) => {
       }[operator];
       
       if (mongoOperator) {
-        filterObj[fieldName][mongoOperator] = query[key];
+        let value = query[key];
+        
+        // Handle special case for "5+" in bedrooms/bathrooms fields
+        if ((fieldName === "bedrooms" || fieldName === "bathrooms") && 
+            typeof value === "string" && value.endsWith("+")) {
+          // Convert "5+" to numeric 5 for $gte operation
+          const numericValue = parseInt(value.replace("+", ""));
+          if (!isNaN(numericValue)) {
+            value = numericValue;
+          }
+        } else {
+          // Try to convert to number for numeric fields
+          if (["price", "areaSqFt", "bedrooms", "bathrooms", "rating"].includes(fieldName)) {
+            const numericValue = Number(value);
+            if (!isNaN(numericValue)) {
+              value = numericValue;
+            }
+          }
+        }
+        
+        filterObj[fieldName][mongoOperator] = value;
       }
     } 
     // Handle comma-separated values (for array fields)

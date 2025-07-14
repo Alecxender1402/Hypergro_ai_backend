@@ -4,7 +4,6 @@ const Property = require('../models/Property');
 
 async function insertPropertiesFromCSV(csvFilePath) {
   try {
-    // Check if collection is empty
     const count = await Property.countDocuments();
     if (count > 0) {
       console.log('Properties already exist in DB. Skipping import.');

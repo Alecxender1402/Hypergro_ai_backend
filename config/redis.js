@@ -7,7 +7,6 @@ const config = {
   host: process.env.REDIS_HOST || 'localhost',
   port: process.env.REDIS_PORT || 6379,
   password: process.env.REDIS_PASSWORD || '',
-  // Connection options
   maxRetriesPerRequest: 1,
   retryStrategy(times) {
     // Retry with exponential backoff

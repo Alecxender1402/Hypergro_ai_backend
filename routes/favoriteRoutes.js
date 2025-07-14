@@ -7,7 +7,7 @@ const { cache } = require('../middleware/cache');
 
 // CRUD operations with caching
 router.post('/', auth, favoriteValidation, favoriteController.createFavorite);
-router.get('/', auth, cache(100), favoriteController.getUserFavorites); // Cache for 5 minutes
+router.get('/', auth, cache(10), favoriteController.getUserFavorites); // Cache for only 10 seconds for immediate updates
 router.delete('/:id', auth, favoriteController.deleteFavorite);
 
 module.exports = router;

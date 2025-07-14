@@ -19,8 +19,8 @@ exports.createFavorite = async (req, res) => {
       property: propertyId
     });
 
-    // Invalidate user favorites cache
-    await invalidateCache([`/favorites`]);
+    // Invalidate user-specific favorites cache and related property caches immediately
+    await invalidateCache(['/favorites', '/properties'], req.user.id);
 
     res.status(201).json(favorite);
   } catch (err) {
@@ -38,7 +38,7 @@ exports.getUserFavorites = async (req, res) => {
     const favorites = await Favorite.find({ user: req.user.id })
       .populate({
         path: 'property',
-        match: { _id: { $exists: true } }, // Only populate if property exists
+        match: { _id: { $exists: true } }, // Ensure property exists
         select: 'title price city state'
       })
       .sort('-createdAt')
@@ -66,8 +66,8 @@ exports.deleteFavorite = async (req, res) => {
       return res.status(404).json({ error: 'Favorite not found' });
     }
 
-    // Invalidate user favorites cache
-    await invalidateCache([`/favorites`]);
+    // Invalidate user-specific favorites cache and related property caches immediately
+    await invalidateCache(['/favorites', '/properties'], req.user.id);
 
     res.json({ message: 'Favorite removed' });
   } catch (err) {
