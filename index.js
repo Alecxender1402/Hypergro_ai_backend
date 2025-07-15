@@ -1,7 +1,7 @@
 const express = require("express");
+const cors = require("cors");
 const connectDB = require("./config/db");
 const { connectRedis, disconnectRedis } = require("./config/redis"); 
-const cors = require("cors");
 const app = express();
 const userRoutes = require("./routes/userRoutes");
 const propertyRoutes = require('./routes/propertyRoutes');
@@ -9,16 +9,22 @@ const favoriteRoutes = require('./routes/favoriteRoutes');
 const insertPropertiesFromCSV = require("./config/insertiondata");
 const diagnosticsRoutes = require('./routes/diagnosticsRoutes');
 
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:8080',
+    'http://localhost:5173',
+    'https://www.abhibhingradiya.shop/',
+  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*'); 
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
 
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/auth', userRoutes);
