@@ -15,7 +15,9 @@ const corsOptions = {
     'http://localhost:3000',
     'http://localhost:8080',
     'http://localhost:5173',
-    'https://www.abhibhingradiya.shop/',
+    'https://www.abhibhingradiya.shop',
+    'http://www.abhibhingradiya.shop',
+    'https://hypergro-ai-backend1.onrender.com'
   ],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
